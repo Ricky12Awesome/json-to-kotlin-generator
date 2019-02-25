@@ -16,4 +16,4 @@ val source = root.generateKotlinSource("Root", true)
 ```
 
 ### Examples
-See [Examples](https://github.com/Ricky12Awesome/json-to-kotlin-generator/blob/master/examples/contents.md) for examples
+See [Examples](https://github.com/Ricky12Awesome/json-to-kotlin-generator/blob/master/example/table.md) for examples
