@@ -1,7 +1,20 @@
 # Json To Kotlin Generator
 Turns json into kotlin classes
 
-# Example
+## Want to use this in your own project?
+Just put [this](https://github.com/Ricky12Awesome/json-to-kotlin-generator/blob/master/src/main/kotlin/ricky/JsonToKtGenerator.kt)
+into your own project
+
+## Usage
+see [this](https://github.com/Ricky12Awesome/json-to-kotlin-generator/blob/master/src/test/kotlin/ricky/test.kt)
+for more details
+```kotlin
+val gson = GsonBuilder().create()
+val json = "Put Json String Here, like the example below."
+gson.treeOf(json).writeTo(Paths.get("out", "test.kt"))
+```
+
+## Example
 ```json
 {
   "string": "oof",
@@ -81,3 +94,6 @@ class Test(
 }
 
 ```
+
+# TODO
+* Option to use data classes over normal ones
