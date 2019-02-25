@@ -5,9 +5,6 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import java.io.Reader
-import java.io.Writer
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * @see Gson.fromJson
@@ -25,114 +22,145 @@ inline fun <reified T> Gson.fromJson(json: Reader): T = fromJson(json, T::class.
  */
 fun Gson.treeOf(json: String): JsonObject = fromJson(json)
 
-val JsonArray.allPrimitive: Boolean get() = all { it.isJsonPrimitive }
-val JsonArray.allObject: Boolean get() = all { it.isJsonObject }
-val JsonArray.allArray: Boolean get() = all { it.isJsonArray }
 
+/**
+ * @param root the root [JsonObject]
+ * @param rootName name of the root object
+ * @param generateAsDataClasses rather or not it should use data classes
+ */
+class JsonToKtGenerator(
+  val root: JsonObject,
+  val rootName: String = "Root",
+  val generateAsDataClasses: Boolean = false
+) {
+  private val JsonArray.allPrimitive: Boolean get() = all { it.isJsonPrimitive }
+  private val JsonArray.allObject: Boolean get() = all { it.isJsonObject }
+  private val JsonArray.allArray: Boolean get() = all { it.isJsonArray }
 
-private fun JsonPrimitive.generateValues(): Pair<String, String> = when {
-  isNumber -> "Number" to "0"
-  isString -> "String" to "\"\""
-  isBoolean -> "Boolean" to "false"
-  else -> "Any?" to "null"
-}
+  private val String.capitalize get() = split("_").joinToString("") { it.capitalize() }
+  private val String.camelCase get() = capitalize.decapitalize()
 
-private fun JsonArray.generateArrays(
-  key: String,
-  classes: MutableList<String> = mutableListOf(),
-  arrays: MutableList<String> = mutableListOf()
-): String = buildString {
-  val value = this@generateArrays.firstOrNull()
-  val type = when {
-    allPrimitive -> (value as JsonPrimitive).generateValues().first
-    allObject -> key.capitalize().also { (value as JsonObject).generateClasses(it, classes) }
-    allArray -> (value as JsonArray).generateArrays(key, classes, arrays)
-    else -> "Any?"
+  private val classes: MutableMap<String, String> = mutableMapOf()
+  private val classIndexes: MutableMap<String, Int> = mutableMapOf()
+
+  private fun JsonPrimitive.generateValues(): Pair<String, String> = when {
+    isNumber -> "Number" to "0"
+    isString -> "String" to "\"\""
+    isBoolean -> "Boolean" to "false"
+    else -> "Any?" to "null"
   }
 
-  append("List<$type>")
+  private fun JsonArray.generateArrays(key: String): String = buildString {
+    val value = this@generateArrays.firstOrNull()
+    val type = when {
+      value == null -> "Any?"
+      allPrimitive -> (value as JsonPrimitive).generateValues().first
+      allObject -> key.capitalize().also { (value as JsonObject).generateClasses(it) }
+      allArray -> (value as JsonArray).generateArrays(key)
+      else -> "Any?"
+    }
+
+    append("List<$type>")
+  }
+
+  /**
+   * generates kotlin classes (as a String) from a [JsonObject]
+   * @param className Name of the class
+   */
+  private fun JsonObject.generateClasses(className: String): List<String> {
+    val set = entrySet()
+    val init = StringBuilder()
+    val constructor = StringBuilder()
+
+    set.forEachIndexed { index, entry ->
+      val (key, value) = entry
+
+      init.append("  val ${key.camelCase}: ")
+      if (!generateAsDataClasses) constructor.append("    $key = ")
+
+      when (value) {
+        is JsonObject -> {
+          val kName = key.capitalize
+          val cName = kName + classIndexes.getOrElse(kName) { "" }
+
+          println(kName to cName)
+          classIndexes[kName] = classIndexes.getOrElse(kName) { 0 } + 1
+
+          value.generateClasses(cName)
+          if (generateAsDataClasses) {
+            init.append("$cName = $cName()")
+          } else {
+            init.append(cName)
+            constructor.append("$cName()")
+          }
+        }
+        is JsonPrimitive -> {
+          val (type, def) = value.generateValues()
+          if (generateAsDataClasses) {
+            init.append("$type = $def")
+          } else {
+            init.append(type)
+            constructor.append(def)
+          }
+        }
+        is JsonArray -> {
+          val type = value.generateArrays(key)
+          if (generateAsDataClasses) {
+            init.append("$type = listOf()")
+          } else {
+            init.append(type)
+            constructor.append("listOf()")
+          }
+        }
+        else -> {
+          if (generateAsDataClasses) {
+            init.append("Any? = null")
+          } else {
+            init.append("Any?")
+            constructor.append("null")
+          }
+        }
+      }
+
+      if (index < set.size - 1) {
+        init.appendln(",")
+        constructor.appendln(",")
+      }
+    }
+
+    classes[className] = buildString {
+      if (set.isNotEmpty()) {
+        if (generateAsDataClasses) {
+          appendln("data class $className(")
+          appendln(init)
+          appendln(")")
+        } else {
+          appendln("class $className(")
+          appendln(init)
+          appendln(") {")
+          appendln("  constructor() : this(")
+          appendln(constructor)
+          appendln("  )")
+          appendln("}")
+        }
+      } else {
+        appendln("class $className")
+      }
+    }
+
+    return classes.values.toList()
+  }
+
+  fun generate(): String = root.generateClasses(rootName).joinToString("")
+
 }
 
 /**
- * generates kotlin classes (as a String) from json
+ * Generates kotlin classes (as a String) from a [JsonObject]
  * @param className Name of the first class
- * @param classes Used for recursion, it hods all the classes as a String
+ * @param generateAsDataClasses rather or not it should use data classes
  */
-fun JsonObject.generateClasses(
+fun JsonObject.generateKotlinSource(
   className: String,
-  classes: MutableList<String> = mutableListOf()
-): List<String> {
-  val set = entrySet()
-  val init = StringBuilder()
-  val constructor = StringBuilder()
-
-  set.forEachIndexed { index, entry ->
-    val (key, value) = entry
-
-    init.append("  $key: ")
-    constructor.append("    $key = ")
-
-    when (value) {
-      is JsonObject -> {
-        val name = key.capitalize()
-        value.generateClasses(name, classes)
-        init.append(name)
-        constructor.append("$name()")
-      }
-      is JsonPrimitive -> {
-        val (type, def) = value.generateValues()
-        init.append(type)
-        constructor.append(def)
-      }
-      is JsonArray -> {
-        init.append(value.generateArrays(key, classes))
-        constructor.append("listOf()")
-      }
-    }
-
-    if (index < set.size - 1) {
-      init.appendln(",")
-      constructor.appendln(",")
-    }
-  }
-
-
-  classes += buildString {
-    appendln("class $className(")
-    appendln(init)
-    appendln(") {")
-    appendln("  constructor() : this(")
-    appendln(constructor)
-    appendln("  )")
-    appendln("}")
-  }
-
-  return classes
-}
-
-/**
- * @param path file to write the generated kotlin source to
- */
-fun JsonObject.writeTo(path: Path) {
-  if (path.parent != null && Files.notExists(path.parent)) {
-    Files.createDirectories(path.parent)
-  }
-  if (Files.notExists(path)) {
-    Files.createFile(path)
-    writeTo("${path.fileName}".capitalize().split(".").first(), Files.newBufferedWriter(path))
-  }
-}
-
-/**
- * @param className Name of the first class
- * @param writer Writer to write the generated kotlin source to
- */
-fun JsonObject.writeTo(className: String, writer: Writer) {
-  writer.write(toKtSource(className))
-  writer.close()
-}
-
-/**
- * @param className Name of the first class
- */
-fun JsonObject.toKtSource(className: String): String = generateClasses(className).joinToString("")
+  generateAsDataClasses: Boolean = false
+): String = JsonToKtGenerator(this, className, generateAsDataClasses).generate()
