@@ -1,15 +1,28 @@
 {
-  "a": {
-    "a": {
-      "a": {
-        "a": {
-          "a": {
-            "a": {
-              "b": "c"
-            }
-          }
+  "data": {
+    "primitives": {
+      "float": 1.0,
+      "int": 1,
+      "boolean": false,
+      "string": "string"
+    },
+    "arrays": {
+      "primitives": {
+        "strings": ["1", "2", "3"],
+        "numbers": [1, 2, 3],
+        "booleans": [true, false]
+      },
+      "multi": {
+        "d1": [1, 2, 3],
+        "d2": [[1, 2, 3]],
+        "d3": [[[1, 2, 3]]],
+        "d15": [[[[[[[[[[[[[[[1, 2, 3]]]]]]]]]]]]]]]
+      },
+      "objects": [
+        {
+          "data": "Hello World"
         }
-      }
+      ]
     }
   }
 }

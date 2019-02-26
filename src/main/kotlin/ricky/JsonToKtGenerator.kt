@@ -83,7 +83,6 @@ class JsonToKtGenerator(
           val kName = key.capitalize
           val cName = kName + classIndexes.getOrElse(kName) { "" }
 
-          println(kName to cName)
           classIndexes[kName] = classIndexes.getOrElse(kName) { 0 } + 1
 
           value.generateClasses(cName)
